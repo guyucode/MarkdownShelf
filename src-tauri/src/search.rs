@@ -32,14 +32,16 @@ pub fn search(files: &[IndexedFile], query: &str, limit: usize) -> Vec<SearchRes
             let haystack = format!("{}/{}", f.folder_name, f.relative_path);
             let mut buf = Vec::new();
             let utf32 = nucleo::Utf32Str::new(&haystack, &mut buf);
-            pattern.score(utf32, &mut matcher).map(|score| SearchResult {
-                file: f.clone(),
-                score,
-            })
+            pattern
+                .score(utf32, &mut matcher)
+                .map(|score| SearchResult {
+                    file: f.clone(),
+                    score,
+                })
         })
         .collect();
 
-    scored.sort_by(|a, b| b.score.cmp(&a.score));
+    scored.sort_by_key(|a| std::cmp::Reverse(a.score));
     scored.truncate(limit);
     scored
 }
@@ -54,6 +56,7 @@ mod tests {
             folder_name: folder.into(),
             absolute_path: format!("/root/{rel}"),
             relative_path: rel.into(),
+            modified_ms: 0,
         }
     }
 

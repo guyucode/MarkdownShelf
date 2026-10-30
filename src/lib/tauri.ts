@@ -30,13 +30,21 @@ export interface IndexedFile {
   folder_name: string;
   absolute_path: string;
   relative_path: string;
+  modified_ms: number;
 }
 
 export interface SearchResult extends IndexedFile {
   score: number;
 }
 
+export interface DocumentSnapshot { path: string; content: string; hash: string; }
+
 export const tauri = {
+  readImage: (path: string) => invoke<string>("read_image", { path }),
+  listDocuments: () => invoke<IndexedFile[]>("list_documents"),
+  readDocument: (path: string) => invoke<DocumentSnapshot>("read_document", { path }),
+  saveDocument: (path: string, content: string, expectedHash: string) => invoke<DocumentSnapshot>("save_document", { path, content, expectedHash }),
+  createDocument: (folderId: string, name: string) => invoke<DocumentSnapshot>("create_document", { folderId, name }),
   getInitialTarget: () => invoke<InitialTarget>("get_initial_target"),
   setInitialTarget: (target: InitialTarget) => invoke<void>("set_initial_target", { target }),
   readFile: (path: string) => invoke<string>("read_file", { path }),

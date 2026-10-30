@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_IGNORES: &[&str] = &[
     ".git",
+    ".reader",
+    ".idea",
+    ".vscode",
     "node_modules",
     "target",
     "dist",
@@ -32,6 +35,7 @@ pub struct IndexedFile {
     pub folder_name: String,
     pub absolute_path: String,
     pub relative_path: String,
+    pub modified_ms: u64,
 }
 
 pub fn is_markdown(path: &Path) -> bool {
@@ -42,14 +46,15 @@ pub fn is_markdown(path: &Path) -> bool {
 }
 
 fn is_ignored_dirname(name: &str) -> bool {
-    name.starts_with('.') || DEFAULT_IGNORES.contains(&name)
+    DEFAULT_IGNORES.contains(&name)
 }
 
 /// Build the tree of markdown files for a folder root.
 /// Empty directories (no markdown descendants) are pruned.
 pub fn build_tree(root: &Path) -> AppResult<TreeNode> {
     let walker = WalkBuilder::new(root)
-        .hidden(true)
+        .hidden(false)
+        .parents(false)
         .git_ignore(true)
         .git_global(false)
         .filter_entry(|entry| {
@@ -62,7 +67,7 @@ pub fn build_tree(root: &Path) -> AppResult<TreeNode> {
     let mut files: Vec<PathBuf> = Vec::new();
     for dent in walker.flatten() {
         let p = dent.path();
-        if p.is_file() && is_markdown(p) {
+        if p.is_file() && is_markdown(p) && !dent.file_type().is_some_and(|t| t.is_symlink()) {
             files.push(p.to_path_buf());
         }
     }
@@ -166,6 +171,12 @@ pub fn flatten_files(
             folder_name: folder_name.to_string(),
             absolute_path: node.path.clone(),
             relative_path: rel,
+            modified_ms: std::fs::metadata(&abs)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
         });
     }
 }
@@ -228,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn tree_skips_default_ignores_and_hidden() {
+    fn tree_skips_dependencies_but_includes_agent_directories() {
         let dir = tempdir().unwrap();
         touch(&dir.path().join("ok.md"));
         touch(&dir.path().join("node_modules/x.md"));
@@ -238,7 +249,9 @@ mod tests {
         let mut files = Vec::new();
         flatten_files("v", "folder", dir.path(), &tree, &mut files);
         let rels: Vec<_> = files.iter().map(|f| f.relative_path.clone()).collect();
-        assert_eq!(rels, vec!["ok.md".to_string()]);
+        assert!(rels.contains(&"ok.md".to_string()));
+        assert!(rels.iter().any(|p| p.ends_with("z.md")));
+        assert_eq!(rels.len(), 2);
     }
 
     #[test]

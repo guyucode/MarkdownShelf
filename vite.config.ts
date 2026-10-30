@@ -11,7 +11,7 @@ export default defineConfig(async () => ({
     alias: { "@": path.resolve(__dirname, "./src") },
   },
   test: {
-    environment: "happy-dom",
+    environment: "jsdom",
     globals: false,
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
   },
@@ -22,14 +22,14 @@ export default defineConfig(async () => ({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1420,
+    port: 1430,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: 1431,
         }
       : undefined,
     watch: {

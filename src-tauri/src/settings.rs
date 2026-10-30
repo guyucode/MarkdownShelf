@@ -80,7 +80,7 @@ impl Settings {
 pub fn data_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("marky")
+        .join("markdown-shelf")
 }
 
 #[cfg(test)]

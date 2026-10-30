@@ -28,12 +28,12 @@ md.use(anchor, {
     s
       .toLowerCase()
       .trim()
-      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/[^\p{L}\p{N}\s-]/gu, "")
       .replace(/\s+/g, "-")
       .replace(/-+/g, "-"),
 });
 md.use(footnote);
-md.use(taskLists, { enabled: true, label: false });
+md.use(taskLists, { enabled: false, label: false });
 
 // Strip YAML front matter so files written for static-site generators,
 // Obsidian, MDX, or spec corpora don't render as a giant setext heading

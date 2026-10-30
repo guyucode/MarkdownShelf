@@ -1,0 +1,8 @@
+MarkdownShelf / 文架 is derived from Marky by Garrett Graves.
+Upstream: https://github.com/GRVYDEV/marky
+Source revision: 5d02237ba9b47a00e73640444fb1ad9c8dddc56d
+The original Apache License 2.0 is preserved in LICENSE.
+Modified 2026-10-31: independent app identity, two-column document shelf,
+recently modified ordering, project-scoped creation/editing, draft recovery,
+external-change protection, watcher filtering, and tests.
+No mdviewer source code was copied.

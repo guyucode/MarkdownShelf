@@ -1,4 +1,5 @@
 import * as React from "react";
+import { tauri } from "@/lib/tauri";
 import { renderMarkdown } from "@/lib/markdown";
 import { highlightCode } from "@/lib/highlight";
 import { renderMermaidBlocks } from "@/lib/mermaid";
@@ -42,6 +43,16 @@ export function Viewer({ source, filePath, articleRef, onRendered }: Props) {
     let cancelled = false;
 
     (async () => {
+      for (const img of Array.from(root.querySelectorAll<HTMLImageElement>("img"))) {
+        const src=img.getAttribute("src") || "";
+        if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//") || !filePath) continue;
+        try {
+          const path=decodeURIComponent(new URL(src,"https://local.invalid"+filePath).pathname);
+          const data=await tauri.readImage(path);
+          if(cancelled)return;
+          img.src=data;
+        } catch { img.alt=(img.alt || "图片")+"（无法读取本地图片）"; }
+      }
       const codeBlocks = root.querySelectorAll<HTMLElement>("pre > code[class*='language-']");
       for (const code of Array.from(codeBlocks)) {
         const cls = code.className;
@@ -77,7 +88,7 @@ export function Viewer({ source, filePath, articleRef, onRendered }: Props) {
     };
     // intentionally omit `ref` and `onRendered`: ref is stable, onRendered is read via ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [html, resolved]);
+  }, [html, resolved, filePath]);
 
   React.useEffect(() => {
     const el = scrollerRef.current;

@@ -18,17 +18,26 @@ struct Inner {
     settings: Settings,
     trees: HashMap<String, TreeNode>,
     index: Vec<IndexedFile>,
+    files: HashMap<String, Vec<IndexedFile>>,
+    scan_versions: HashMap<String, u64>,
 }
 
 impl FolderRegistry {
+    #[cfg(test)]
     pub fn from_settings(settings: Settings) -> Self {
-        let mut inner = Inner {
-            settings,
-            ..Default::default()
-        };
-        inner.rebuild_all();
+        let registry = Self::from_settings_lazy(settings);
+        for folder in registry.folders() {
+            registry.refresh_folder(&folder.id);
+        }
+        registry
+    }
+
+    pub fn from_settings_lazy(settings: Settings) -> Self {
         Self {
-            inner: RwLock::new(inner),
+            inner: RwLock::new(Inner {
+                settings,
+                ..Default::default()
+            }),
         }
     }
 
@@ -48,7 +57,18 @@ impl FolderRegistry {
         self.inner.read().index.clone()
     }
 
+    #[cfg(test)]
     pub fn add_folder(&self, path: PathBuf) -> AppResult<Folder> {
+        let folder = self.add_folder_lazy(path)?;
+        self.refresh_folder(&folder.id);
+        Ok(folder)
+    }
+
+    pub fn has_tree(&self, id: &str) -> bool {
+        self.inner.read().trees.contains_key(id)
+    }
+
+    pub fn add_folder_lazy(&self, path: PathBuf) -> AppResult<Folder> {
         let abs = std::fs::canonicalize(&path)?;
         if !abs.is_dir() {
             return Err(AppError::Invalid("folder path is not a directory".into()));
@@ -72,7 +92,7 @@ impl FolderRegistry {
             added_at: chrono_now(),
         };
         guard.settings.add_folder(folder.clone());
-        guard.rebuild_one(&folder);
+        drop(guard);
         Ok(folder)
     }
 
@@ -80,16 +100,56 @@ impl FolderRegistry {
         let mut guard = self.inner.write();
         guard.settings.remove_folder(id);
         guard.trees.remove(id);
+        guard.files.remove(id);
         guard.rebuild_index();
     }
 
     pub fn refresh_folder(&self, id: &str) {
-        let mut guard = self.inner.write();
-        let folder = match guard.settings.folders.iter().find(|v| v.id == id).cloned() {
-            Some(v) => v,
-            None => return,
+        let (folder, version) = {
+            let mut guard = self.inner.write();
+            let Some(folder) = guard.settings.folders.iter().find(|v| v.id == id).cloned() else {
+                return;
+            };
+            let version = guard
+                .scan_versions
+                .get(id)
+                .copied()
+                .unwrap_or(0)
+                .wrapping_add(1);
+            guard.scan_versions.insert(id.into(), version);
+            (folder, version)
         };
-        guard.rebuild_one(&folder);
+        // File system IO must never hold the registry lock: an unavailable
+        // folder must not freeze the UI or hide every other project.
+        let root = PathBuf::from(&folder.path);
+        let prepared = build_tree(&root).map(|tree| {
+            let mut files = Vec::new();
+            flatten_files(&folder.id, &folder.name, &root, &tree, &mut files);
+            (tree, files)
+        });
+        let mut guard = self.inner.write();
+        if guard.scan_versions.get(id) != Some(&version) {
+            return;
+        }
+        if !guard
+            .settings
+            .folders
+            .iter()
+            .any(|f| f.id == id && f.path == folder.path)
+        {
+            return;
+        }
+        match prepared {
+            Ok((tree, files)) => {
+                guard.trees.insert(id.into(), tree);
+                guard.files.insert(id.into(), files);
+            }
+            Err(_) => {
+                guard.trees.remove(id);
+                guard.files.remove(id);
+            }
+        }
+        guard.rebuild_index();
     }
 
     pub fn push_recent(&self, path: String) {
@@ -112,35 +172,15 @@ impl FolderRegistry {
 }
 
 impl Inner {
-    fn rebuild_all(&mut self) {
-        self.trees.clear();
-        let folders = self.settings.folders.clone();
-        for v in &folders {
-            self.rebuild_one(v);
-        }
-    }
-
-    fn rebuild_one(&mut self, folder: &Folder) {
-        let root = PathBuf::from(&folder.path);
-        match build_tree(&root) {
-            Ok(tree) => {
-                self.trees.insert(folder.id.clone(), tree);
-            }
-            Err(_) => {
-                self.trees.remove(&folder.id);
-            }
-        }
-        self.rebuild_index();
-    }
-
     fn rebuild_index(&mut self) {
-        self.index.clear();
-        for v in &self.settings.folders {
-            if let Some(tree) = self.trees.get(&v.id) {
-                let root = PathBuf::from(&v.path);
-                flatten_files(&v.id, &v.name, &root, tree, &mut self.index);
-            }
-        }
+        self.index = self
+            .settings
+            .folders
+            .iter()
+            .filter_map(|f| self.files.get(&f.id))
+            .flatten()
+            .cloned()
+            .collect();
     }
 }
 
@@ -159,6 +199,19 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn lazy_restore_exposes_projects_before_any_scan() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.md"), "a").unwrap();
+        let original = FolderRegistry::from_settings(Settings::default());
+        let folder = original.add_folder(dir.path().to_owned()).unwrap();
+        let restored = FolderRegistry::from_settings_lazy(original.settings());
+        assert_eq!(restored.folders().len(), 1);
+        assert!(restored.index_snapshot().is_empty());
+        restored.refresh_folder(&folder.id);
+        assert_eq!(restored.index_snapshot().len(), 1);
+    }
 
     #[test]
     fn add_folder_indexes_files() {

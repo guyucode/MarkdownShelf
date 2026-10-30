@@ -39,3 +39,7 @@ coverage
 Thumbs.db
 
 PLAN.md
+
+# Local QA artifacts
+test-results/
+playwright-report/

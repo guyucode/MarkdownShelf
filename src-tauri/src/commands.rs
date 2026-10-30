@@ -4,7 +4,7 @@ use crate::folder::TreeNode;
 use crate::registry::SharedRegistry;
 use crate::search::{search, SearchResult};
 use crate::settings::{data_dir, Folder};
-use crate::watcher::{watch_folder, SharedWatchers};
+use crate::watcher::{start_folder, SharedWatchers};
 use parking_lot::Mutex;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ pub fn set_initial_target(target: InitialTarget, state: State<'_, InitialTargetS
 
 #[tauri::command]
 pub fn read_file(path: String, registry: State<'_, SharedRegistry>) -> AppResult<String> {
-    let contents = crate::fs::read_text(&path)?;
+    let contents = crate::documents::read(&registry, std::path::Path::new(&path))?.content;
     registry.push_recent(path);
     let _ = registry.save(&data_dir());
     Ok(contents)
@@ -49,8 +49,7 @@ pub fn list_folders_grouped(registry: State<'_, SharedRegistry>) -> Vec<Annotate
         .folders()
         .into_iter()
         .map(|f| {
-            let repo_root =
-                crate::folder::find_git_repo_root(std::path::Path::new(&f.path));
+            let repo_root = crate::folder::find_git_repo_root(std::path::Path::new(&f.path));
             let repo_name = repo_root.as_ref().and_then(|r| {
                 std::path::Path::new(r)
                     .file_name()
@@ -73,16 +72,14 @@ pub fn add_folder(
     registry: State<'_, SharedRegistry>,
     watchers: State<'_, SharedWatchers>,
 ) -> AppResult<Folder> {
-    let folder = registry.add_folder(PathBuf::from(&path))?;
+    let folder = registry.add_folder_lazy(PathBuf::from(&path))?;
     registry.save(&data_dir())?;
-    if let Ok(handle) = watch_folder(
+    start_folder(
         app.clone(),
         Arc::clone(&registry),
-        folder.id.clone(),
-        PathBuf::from(&folder.path),
-    ) {
-        watchers.insert(folder.id.clone(), handle);
-    }
+        Arc::clone(&watchers),
+        folder.clone(),
+    );
     let _ = app.emit("folder://changed", &folder.id);
     Ok(folder)
 }
@@ -120,10 +117,7 @@ fn default_limit() -> usize {
 }
 
 #[tauri::command]
-pub fn search_files(
-    args: SearchArgs,
-    registry: State<'_, SharedRegistry>,
-) -> Vec<SearchResult> {
+pub fn search_files(args: SearchArgs, registry: State<'_, SharedRegistry>) -> Vec<SearchResult> {
     let snapshot = registry.index_snapshot();
     search(&snapshot, &args.query, args.limit)
 }
@@ -171,4 +165,66 @@ pub fn load_preferences(registry: State<'_, SharedRegistry>) -> PreferencesPaylo
         copy_as_markdown: s.copy_as_markdown,
         sidebar_group_by_repo: s.sidebar_group_by_repo,
     }
+}
+
+#[tauri::command]
+pub fn list_documents(registry: State<'_, SharedRegistry>) -> Vec<crate::folder::IndexedFile> {
+    crate::documents::list(&registry)
+}
+
+#[tauri::command]
+pub async fn read_document(
+    path: String,
+    registry: State<'_, SharedRegistry>,
+) -> AppResult<crate::documents::Document> {
+    let registry = Arc::clone(registry.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::documents::read(&registry, std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?
+}
+
+#[tauri::command]
+pub async fn save_document(
+    path: String,
+    content: String,
+    expected_hash: String,
+    registry: State<'_, SharedRegistry>,
+) -> AppResult<crate::documents::Document> {
+    let registry = Arc::clone(registry.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::documents::save(
+            &registry,
+            std::path::Path::new(&path),
+            &content,
+            &expected_hash,
+        )
+    })
+    .await
+    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?
+}
+
+#[tauri::command]
+pub async fn create_document(
+    folder_id: String,
+    name: String,
+    registry: State<'_, SharedRegistry>,
+) -> AppResult<crate::documents::Document> {
+    let registry = Arc::clone(registry.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::documents::create(&registry, &folder_id, &name)
+    })
+    .await
+    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?
+}
+
+#[tauri::command]
+pub async fn read_image(path: String, registry: State<'_, SharedRegistry>) -> AppResult<String> {
+    let registry = Arc::clone(registry.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::documents::read_image(&registry, std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?
 }
