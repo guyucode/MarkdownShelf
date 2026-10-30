@@ -1,0 +1,297 @@
+use crate::error::AppResult;
+use ignore::WalkBuilder;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+pub const DEFAULT_IGNORES: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    ".cache",
+    ".venv",
+    "__pycache__",
+];
+
+pub const MARKDOWN_EXTS: &[&str] = &["md", "markdown", "mdx"];
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreeNode {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    #[serde(default)]
+    pub children: Vec<TreeNode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IndexedFile {
+    pub folder_id: String,
+    pub folder_name: String,
+    pub absolute_path: String,
+    pub relative_path: String,
+}
+
+pub fn is_markdown(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| MARKDOWN_EXTS.iter().any(|m| m.eq_ignore_ascii_case(e)))
+        .unwrap_or(false)
+}
+
+fn is_ignored_dirname(name: &str) -> bool {
+    name.starts_with('.') || DEFAULT_IGNORES.contains(&name)
+}
+
+/// Build the tree of markdown files for a folder root.
+/// Empty directories (no markdown descendants) are pruned.
+pub fn build_tree(root: &Path) -> AppResult<TreeNode> {
+    let walker = WalkBuilder::new(root)
+        .hidden(true)
+        .git_ignore(true)
+        .git_global(false)
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            !(entry.depth() > 0 && is_ignored_dirname(&name))
+        })
+        .build();
+
+    // Collect files first.
+    let mut files: Vec<PathBuf> = Vec::new();
+    for dent in walker.flatten() {
+        let p = dent.path();
+        if p.is_file() && is_markdown(p) {
+            files.push(p.to_path_buf());
+        }
+    }
+    files.sort();
+
+    let root_name = root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("folder")
+        .to_string();
+
+    let mut root_node = TreeNode {
+        name: root_name,
+        path: root.to_string_lossy().into_owned(),
+        is_dir: true,
+        children: Vec::new(),
+    };
+
+    for f in files {
+        let rel = match f.strip_prefix(root) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        insert_path(&mut root_node, root, rel);
+    }
+
+    sort_tree(&mut root_node);
+    Ok(root_node)
+}
+
+fn insert_path(node: &mut TreeNode, root: &Path, rel: &Path) {
+    let components: Vec<_> = rel
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    if components.is_empty() {
+        return;
+    }
+    insert_components(node, root, &components, 0);
+}
+
+fn insert_components(node: &mut TreeNode, root: &Path, parts: &[String], idx: usize) {
+    if idx >= parts.len() {
+        return;
+    }
+    let part = &parts[idx];
+    let is_last = idx == parts.len() - 1;
+    let abs: PathBuf = root.join(parts[..=idx].iter().collect::<PathBuf>());
+
+    if let Some(existing) = node.children.iter_mut().find(|c| &c.name == part) {
+        if !is_last {
+            insert_components(existing, root, parts, idx + 1);
+        }
+        return;
+    }
+
+    let mut new_node = TreeNode {
+        name: part.clone(),
+        path: abs.to_string_lossy().into_owned(),
+        is_dir: !is_last,
+        children: Vec::new(),
+    };
+
+    if !is_last {
+        insert_components(&mut new_node, root, parts, idx + 1);
+    }
+    node.children.push(new_node);
+}
+
+fn sort_tree(node: &mut TreeNode) {
+    node.children.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+    for c in &mut node.children {
+        sort_tree(c);
+    }
+}
+
+/// Flatten the tree into IndexedFile entries (markdown files only).
+pub fn flatten_files(
+    folder_id: &str,
+    folder_name: &str,
+    folder_root: &Path,
+    node: &TreeNode,
+    out: &mut Vec<IndexedFile>,
+) {
+    if node.is_dir {
+        for c in &node.children {
+            flatten_files(folder_id, folder_name, folder_root, c, out);
+        }
+    } else {
+        let abs = PathBuf::from(&node.path);
+        let rel = abs
+            .strip_prefix(folder_root)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| node.name.clone());
+        out.push(IndexedFile {
+            folder_id: folder_id.to_string(),
+            folder_name: folder_name.to_string(),
+            absolute_path: node.path.clone(),
+            relative_path: rel,
+        });
+    }
+}
+
+/// Walk up from `start` looking for a `.git` directory.
+/// Stops at the user's home directory (inclusive) or filesystem root,
+/// whichever comes first. Never walks above home.
+pub fn find_git_repo_root(start: &Path) -> Option<String> {
+    let ceiling = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+    let mut dir = if start.is_dir() {
+        start.to_path_buf()
+    } else {
+        start.parent()?.to_path_buf()
+    };
+    loop {
+        if dir.join(".git").exists() {
+            return dir.to_str().map(String::from);
+        }
+        if dir == ceiling || !dir.pop() {
+            return None;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn touch(p: &Path) {
+        if let Some(parent) = p.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(p, "x").unwrap();
+    }
+
+    #[test]
+    fn detects_markdown_extensions() {
+        assert!(is_markdown(Path::new("a.md")));
+        assert!(is_markdown(Path::new("a.MARKDOWN")));
+        assert!(is_markdown(Path::new("a.mdx")));
+        assert!(!is_markdown(Path::new("a.txt")));
+        assert!(!is_markdown(Path::new("a")));
+    }
+
+    #[test]
+    fn tree_includes_only_markdown() {
+        let dir = tempdir().unwrap();
+        touch(&dir.path().join("a.md"));
+        touch(&dir.path().join("b.txt"));
+        touch(&dir.path().join("sub/c.md"));
+        let tree = build_tree(dir.path()).unwrap();
+        let mut files = Vec::new();
+        flatten_files("v", "folder", dir.path(), &tree, &mut files);
+        let names: Vec<_> = files.iter().map(|f| f.relative_path.clone()).collect();
+        assert!(names.iter().any(|n| n.ends_with("a.md")));
+        assert!(names.iter().any(|n| n.ends_with("c.md")));
+        assert!(!names.iter().any(|n| n.ends_with("b.txt")));
+    }
+
+    #[test]
+    fn tree_skips_default_ignores_and_hidden() {
+        let dir = tempdir().unwrap();
+        touch(&dir.path().join("ok.md"));
+        touch(&dir.path().join("node_modules/x.md"));
+        touch(&dir.path().join(".git/y.md"));
+        touch(&dir.path().join(".hidden/z.md"));
+        let tree = build_tree(dir.path()).unwrap();
+        let mut files = Vec::new();
+        flatten_files("v", "folder", dir.path(), &tree, &mut files);
+        let rels: Vec<_> = files.iter().map(|f| f.relative_path.clone()).collect();
+        assert_eq!(rels, vec!["ok.md".to_string()]);
+    }
+
+    #[test]
+    fn tree_directories_sorted_before_files() {
+        let dir = tempdir().unwrap();
+        touch(&dir.path().join("z_root.md"));
+        touch(&dir.path().join("a_dir/inner.md"));
+        let tree = build_tree(dir.path()).unwrap();
+        assert_eq!(tree.children.len(), 2);
+        assert!(tree.children[0].is_dir);
+        assert_eq!(tree.children[0].name, "a_dir");
+        assert_eq!(tree.children[1].name, "z_root.md");
+    }
+
+    #[test]
+    fn tree_preserves_relative_path_in_indexed_files() {
+        let dir = tempdir().unwrap();
+        touch(&dir.path().join("docs/guide/intro.md"));
+        let tree = build_tree(dir.path()).unwrap();
+        let mut files = Vec::new();
+        flatten_files("f1", "myfolder", dir.path(), &tree, &mut files);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].folder_id, "f1");
+        assert_eq!(files[0].folder_name, "myfolder");
+        assert_eq!(
+            files[0].relative_path.replace('\\', "/"),
+            "docs/guide/intro.md"
+        );
+    }
+
+    #[test]
+    fn find_git_repo_root_finds_repo() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".git")).unwrap();
+        fs::create_dir_all(dir.path().join("sub/deep")).unwrap();
+        let result = find_git_repo_root(&dir.path().join("sub/deep"));
+        assert_eq!(result, Some(dir.path().to_str().unwrap().to_string()));
+    }
+
+    #[test]
+    fn find_git_repo_root_at_root_itself() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".git")).unwrap();
+        let result = find_git_repo_root(dir.path());
+        assert_eq!(result, Some(dir.path().to_str().unwrap().to_string()));
+    }
+
+    #[test]
+    fn find_git_repo_root_none_when_no_git() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("sub")).unwrap();
+        // tempdir is typically in /tmp which has no .git above it
+        let result = find_git_repo_root(&dir.path().join("sub"));
+        assert_eq!(result, None);
+    }
+}
