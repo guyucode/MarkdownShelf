@@ -1,0 +1,1 @@
+Release-only dependency notices are generated here by scripts/collect-release-licenses.py for the target platform. Build with this collector before packaging. Generated license texts and MPL source archives are bundled with the application; user files are never copied.

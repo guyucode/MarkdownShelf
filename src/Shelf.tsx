@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { tauri, onFolderChanged, onFileChanged, type Folder, type IndexedFile, type DocumentSnapshot, type ReadingMark } from '@/lib/tauri';
 import { clearDraft, documentTitle, readDraft, relativeTime, visibleDocuments, writeDraft } from '@/lib/shelf';
 import '@/styles/shelf.css';
+import { localDocumentPath } from '@/lib/localPath';
 
 interface Session { doc: DocumentSnapshot; draft: string; editing: boolean; conflict: boolean; }
 function Shelf() {
@@ -63,7 +64,6 @@ function Shelf() {
     void(async()=>{
       try{
         const initial=await tauri.getInitialTarget();
-        if(initial.kind==='file')await tauri.addFolder(initial.path.slice(0,initial.path.lastIndexOf('/')));
         await refresh();if(disposed)return;
         const last=initial.kind==='file'?initial.path:localStorage.getItem('markdown-shelf:last-file');
         if(last)void openDocument(last);
@@ -172,7 +172,7 @@ function Shelf() {
           const a=(e.target as HTMLElement).closest('a');if(!a)return;
           const href=a.getAttribute('href')||'';if(href.startsWith('#'))return;e.preventDefault();
           if(/^https?:\/\//i.test(href))void openUrl(href).catch(e=>setError(String(e)));
-          else if(!/^[a-z][a-z0-9+.-]*:/i.test(href)){const url=new URL(href,'https://local.invalid'+session.doc.path);void openDocument(decodeURIComponent(url.pathname));}
+          else if(!/^[a-z][a-z0-9+.-]*:/i.test(href)){try{void openDocument(localDocumentPath(session.doc.path,href));}catch(e){setError(String(e));}}
         }}>{session.editing?<textarea className="shelf-editor" aria-label="Markdown 编辑器" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={busy} value={session.draft} onChange={e=>{
           const value={...session,draft:e.target.value};setSession(value);setHint('');
           try{writeDraft(value.doc.path,{text:value.draft,baseHash:value.doc.hash});}catch{setError('本机草稿保存失败，请及时保存或复制正文。');}

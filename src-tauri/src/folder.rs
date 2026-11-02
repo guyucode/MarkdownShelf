@@ -164,7 +164,7 @@ pub fn flatten_files(
         let abs = PathBuf::from(&node.path);
         let rel = abs
             .strip_prefix(folder_root)
-            .map(|p| p.to_string_lossy().into_owned())
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
             .unwrap_or_else(|_| node.name.clone());
         out.push(IndexedFile {
             folder_id: folder_id.to_string(),

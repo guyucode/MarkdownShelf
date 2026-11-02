@@ -47,3 +47,8 @@ playwright-report/
 # Local application state must never enter the public source repository.
 /settings.json
 /required-reading.json
+
+# Generated target-specific release resources and installers
+/release-legal/*
+!/release-legal/README.md
+/release-artifacts/

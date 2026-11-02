@@ -1,0 +1,102 @@
+name: Windows preview
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: '1'
+      CARGO_TERM_COLOR: never
+    steps:
+      - name: Preserve line endings
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: cache
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: shelf-windows-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: shelf-windows-${{ hashFiles('src-tauri/Cargo.lock') }}
+      - name: Prepare dependencies
+        shell: pwsh
+        run: |
+          npm install -g pnpm@11.25.0
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          rustup toolchain install stable --profile minimal --component clippy
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          rustup default stable
+      - name: Rust regressions and lint
+        shell: pwsh
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --locked 2>&1 | Tee-Object "$env:RUNNER_TEMP/shelf-rust.log"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Frontend and browser regressions
+        shell: pwsh
+        run: |
+          pnpm test 2>&1 | Tee-Object "$env:RUNNER_TEMP/shelf-frontend.log"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pnpm build
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pnpm exec playwright install chromium
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pnpm test:ui 2>&1 | Tee-Object "$env:RUNNER_TEMP/shelf-ui.log"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Collect original dependency notices
+        shell: pwsh
+        run: python scripts/collect-release-licenses.py --target x86_64-pc-windows-msvc
+      - name: Build installer
+        id: build
+        shell: pwsh
+        run: |
+          pnpm tauri build --bundles nsis --config src-tauri/tauri.windows.conf.json
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force release-artifacts/windows | Out-Null
+          Copy-Item src-tauri/target/release/bundle/nsis/MarkdownShelf_0.2.0_x64-setup.exe release-artifacts/windows/MarkdownShelf_0.2.0_windows_x64_setup.exe
+      - name: Native installation and required-reading verification
+        shell: powershell
+        run: |
+          $source = [IO.File]::ReadAllText((Join-Path $PWD 'scripts/test-windows-install.ps1'),[Text.Encoding]::UTF8)
+          & ([scriptblock]::Create($source))
+      - name: Hash candidate
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash release-artifacts/windows/MarkdownShelf_0.2.0_windows_x64_setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  MarkdownShelf_0.2.0_windows_x64_setup.exe" | Set-Content release-artifacts/windows/SHA256SUMS-windows.txt -Encoding utf8NoBOM
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && steps.build.outcome == 'success'
+        with:
+          name: MarkdownShelf-Windows-x64
+          path: release-artifacts/windows/*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: Windows-validation
+          path: |
+            ${{ runner.temp }}/shelf-*.log
+            ${{ runner.temp }}/shelf-windows-native.json
+            ${{ runner.temp }}/shelf-windows-native.png
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ steps.cache.outputs.cache-primary-key }}

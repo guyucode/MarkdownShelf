@@ -25,3 +25,8 @@ application data, never in the source Markdown or project repository. Reading,
 watcher refresh and saving edits must not auto-confirm. Changed content remains
 required but needs review; stale confirmations must fail. Keep marks and drafts
 when removing a project, and never publish local project settings or reading data.
+
+For installer releases, run scripts/collect-release-licenses.py for the target
+before bundling. Include generated dependency texts/source resources; never
+publish app settings, drafts or reading marks. Windows must pass hosted tests
+and installed native rendering/required-reading checks before publishing.

@@ -12,3 +12,7 @@ content-hash confirmation, update/review indicators, two-column filtering,
 and boundary, persistence and interaction regression tests.
 Upstream release automation is retained under docs/upstream and is not active
 in this independent repository.
+
+Modified 2026-11-03 for desktop previews: native file-target registration,
+Windows/Unix relative document and image paths, Windows packaging/validation,
+and target-specific third-party license collection.

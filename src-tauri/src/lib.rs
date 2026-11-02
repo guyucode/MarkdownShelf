@@ -15,7 +15,6 @@ use commands::InitialTargetState;
 use parking_lot::Mutex;
 use registry::{FolderRegistry, SharedRegistry};
 use settings::{data_dir, Settings};
-use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
 use watcher::{start_folder, SharedWatchers, Watchers};
@@ -24,29 +23,33 @@ use watcher::{start_folder, SharedWatchers, Watchers};
 /// file-open events: register folders, update managed state, emit to frontend,
 /// and focus the main window.
 fn handle_target(app: &tauri::AppHandle, target: cli::InitialTarget) {
-    let resolved = match &target {
-        cli::InitialTarget::Folder { path } => {
-            if let (Some(reg), Some(watchers)) = (
-                app.try_state::<SharedRegistry>(),
-                app.try_state::<SharedWatchers>(),
-            ) {
-                if let Ok(folder) = reg.add_folder_lazy(PathBuf::from(path)) {
-                    let _ = reg.save(&data_dir());
-                    start_folder(
-                        app.clone(),
-                        Arc::clone(&*reg),
-                        Arc::clone(&*watchers),
-                        folder.clone(),
-                    );
-                    cli::InitialTarget::Folder { path: folder.path }
-                } else {
-                    target.clone()
+    let resolved = if let Some(folder_path) = cli::project_folder(&target) {
+        if let (Some(reg), Some(watchers)) = (
+            app.try_state::<SharedRegistry>(),
+            app.try_state::<SharedWatchers>(),
+        ) {
+            if let Ok(folder) = reg.add_folder_lazy(folder_path) {
+                let _ = reg.save(&data_dir());
+                start_folder(
+                    app.clone(),
+                    Arc::clone(&*reg),
+                    Arc::clone(&*watchers),
+                    folder.clone(),
+                );
+                match &target {
+                    cli::InitialTarget::Folder { .. } => {
+                        cli::InitialTarget::Folder { path: folder.path }
+                    }
+                    _ => target.clone(),
                 }
             } else {
-                target.clone()
+                cli::InitialTarget::None
             }
+        } else {
+            cli::InitialTarget::None
         }
-        other => other.clone(),
+    } else {
+        target.clone()
     };
 
     if let Some(state) = app.try_state::<InitialTargetState>() {
@@ -76,17 +79,21 @@ pub fn run() {
             let watchers: SharedWatchers = Arc::new(Watchers::default());
 
             let handle = app.handle().clone();
-            let initial_resolved = match &initial {
-                cli::InitialTarget::Folder { path } => {
-                    match registry.add_folder_lazy(PathBuf::from(path)) {
-                        Ok(v) => {
-                            let _ = registry.save(&dir);
-                            cli::InitialTarget::Folder { path: v.path }
+            let initial_resolved = if let Some(folder_path) = cli::project_folder(&initial) {
+                match registry.add_folder_lazy(folder_path) {
+                    Ok(folder) => {
+                        let _ = registry.save(&dir);
+                        match &initial {
+                            cli::InitialTarget::Folder { .. } => {
+                                cli::InitialTarget::Folder { path: folder.path }
+                            }
+                            _ => initial.clone(),
                         }
-                        Err(_) => cli::InitialTarget::None,
                     }
+                    Err(_) => cli::InitialTarget::None,
                 }
-                other => other.clone(),
+            } else {
+                initial.clone()
             };
 
             app.manage(InitialTargetState(Mutex::new(initial_resolved)));
@@ -129,14 +136,14 @@ pub fn run() {
 
     // Handle macOS file-open events (Finder "Open With", Dock drag-drop,
     // `open /path/to/file.md` when Marky is the default handler).
-    app.run(|app_handle, event| {
+    app.run(|_app_handle, _event| {
         #[cfg(target_os = "macos")]
-        if let tauri::RunEvent::Opened { urls } = event {
+        if let tauri::RunEvent::Opened { urls } = _event {
             for url in urls {
                 if let Ok(path) = url.to_file_path() {
                     let target = cli::classify(&path);
                     if target != cli::InitialTarget::None {
-                        handle_target(app_handle, target);
+                        handle_target(_app_handle, target);
                         break;
                     }
                 }

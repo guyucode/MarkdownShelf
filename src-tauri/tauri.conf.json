@@ -39,7 +39,8 @@
     ],
     "resources": {
       "../LICENSE": "legal/LICENSE",
-      "../NOTICE": "legal/NOTICE"
+      "../NOTICE": "legal/NOTICE",
+      "../release-legal/": "legal/dependencies/"
     }
   }
 }

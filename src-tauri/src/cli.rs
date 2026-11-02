@@ -94,3 +94,28 @@ mod tests {
         matches!(resolve(&args), InitialTarget::File { .. });
     }
 }
+
+/// A file target registers its real parent in Rust, including native Windows prefixes.
+pub fn project_folder(target: &InitialTarget) -> Option<PathBuf> {
+    match target {
+        InitialTarget::Folder { path } => Some(PathBuf::from(path)),
+        InitialTarget::File { path } => Path::new(path).parent().map(Path::to_path_buf),
+        InitialTarget::None => None,
+    }
+}
+#[cfg(test)]
+mod project_tests {
+    use super::*;
+    #[test]
+    fn file_target_uses_native_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("document.md");
+        assert_eq!(
+            project_folder(&InitialTarget::File {
+                path: file.to_string_lossy().into_owned()
+            }),
+            Some(dir.path().to_owned())
+        );
+        assert_eq!(project_folder(&InitialTarget::None), None);
+    }
+}

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { localDocumentPath } from "@/lib/localPath";
 import { tauri } from "@/lib/tauri";
 import { renderMarkdown } from "@/lib/markdown";
 import { highlightCode } from "@/lib/highlight";
@@ -47,7 +48,7 @@ export function Viewer({ source, filePath, articleRef, onRendered }: Props) {
         const src=img.getAttribute("src") || "";
         if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//") || !filePath) continue;
         try {
-          const path=decodeURIComponent(new URL(src,"https://local.invalid"+filePath).pathname);
+          const path=localDocumentPath(filePath,src);
           const data=await tauri.readImage(path);
           if(cancelled)return;
           img.src=data;

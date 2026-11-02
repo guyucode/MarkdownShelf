@@ -4,7 +4,18 @@
 
 打开多个项目，集中看最近更新的 Markdown。左侧只有文档列表，右侧阅读正文或编辑；不移动原文件，不需要账号、模型或云服务。
 
-当前版本 **0.2.0 · Mac 本地预览**。这里提供源码和开发步骤，尚未发布可直接下载的安装包。
+当前版本 **0.2.0 Preview**，独立于 CodeTrail。
+
+## 下载与安装
+
+| 你的电脑 | 安装包 |
+| --- | --- |
+| Mac · Apple Silicon（M 系列） | [下载 DMG](https://github.com/guyucode/MarkdownShelf/releases/download/v0.2.0-preview.1/MarkdownShelf_0.2.0_aarch64.dmg) |
+| Windows · x64（Intel / AMD 64 位） | [下载 EXE](https://github.com/guyucode/MarkdownShelf/releases/download/v0.2.0-preview.1/MarkdownShelf_0.2.0_windows_x64_setup.exe) |
+
+Mac 打开 DMG 后拖入“应用程序”；Windows 运行 EXE。普通使用无需开发工具或模型。**预览版未做平台代码签名或 Apple 公证**，请核对发行页来源和 SHA-256，按系统正常提示处理，不关闭安全保护。Windows 缺少 WebView2 时需要联网安装。
+
+[详细安装说明](docs/INSTALL.md) · [发行页、校验文件与验证报告](https://github.com/guyucode/MarkdownShelf/releases/tag/v0.2.0-preview.1)。仅 Apple Silicon / Windows x64；其他架构暂不提供安装包。源码 ZIP 不是安装程序。
 
 ## 项目必读
 
@@ -31,7 +42,7 @@
 
 递归收集 `.md`、`.markdown`、`.mdx`，尊重项目 `.gitignore`；跳过 `.git`、依赖和常见构建/缓存目录。包含未被忽略的 `.claude` 等隐藏文档目录。MDX 作为 Markdown 阅读，不执行其组件代码。正文搜索、AI 总结、云同步和知识图谱不在第一版范围内。
 
-普通文档读取和编辑限制 5 MB，要求 UTF-8。项目路径变动后需重新添加。写回使用版本摘要检查与同目录临时文件替换，可检测通常的并发修改，但不承诺与所有外部编辑器组成跨进程事务。仅验证本机 Apple Silicon Mac，其他平台未验收。
+普通文档读取和编辑限制 5 MB，要求 UTF-8。项目路径变动后需重新添加。写回使用版本摘要检查与同目录临时文件替换，可检测通常的并发修改，但不承诺与所有外部编辑器组成跨进程事务。Mac 已在本机 Apple Silicon 验证；Windows 验收范围及实际结果见发行页，不把云端验收当作 Windows 10/11 实机人工验收。
 
 ## 开发
 
