@@ -228,3 +228,35 @@ pub async fn read_image(path: String, registry: State<'_, SharedRegistry>) -> Ap
     .await
     .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?
 }
+
+#[tauri::command]
+pub async fn list_reading_marks(
+    registry: State<'_, SharedRegistry>,
+) -> AppResult<Vec<crate::reading::ReadingStatus>> {
+    let registry = Arc::clone(&registry);
+    tauri::async_runtime::spawn_blocking(move || crate::reading::list(&registry, &data_dir()))
+        .await
+        .map_err(|e| AppError::Invalid(e.to_string()))?
+}
+#[tauri::command]
+pub async fn update_reading_mark(
+    folder_id: String,
+    path: String,
+    expected_hash: String,
+    action: String,
+    registry: State<'_, SharedRegistry>,
+) -> AppResult<()> {
+    let registry = Arc::clone(&registry);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::reading::update(
+            &registry,
+            &data_dir(),
+            &folder_id,
+            &path,
+            &expected_hash,
+            &action,
+        )
+    })
+    .await
+    .map_err(|e| AppError::Invalid(e.to_string()))?
+}

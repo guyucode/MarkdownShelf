@@ -5,6 +5,7 @@ mod error;
 mod folder;
 #[cfg(test)]
 mod fs;
+mod reading;
 mod registry;
 mod search;
 mod settings;
@@ -104,6 +105,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::read_image,
             commands::list_documents,
+            commands::list_reading_marks,
+            commands::update_reading_mark,
             commands::read_document,
             commands::save_document,
             commands::create_document,

@@ -12,6 +12,8 @@ async function boot(page:Page){
    if(cmd==='load_preferences')return {};
    if(cmd==='save_preferences')return;
    if(cmd==='list_folders')return s.folders;
+   if(cmd==='list_reading_marks'){const marks=JSON.parse(localStorage.getItem('test-reading-marks')||'[]');return marks.map((m:any)=>({...m,state:!s.docs[m.path]?'unavailable':s.docs[m.path].hash===m.hash?'confirmed':'needsReview'}));}
+   if(cmd==='update_reading_mark'){const d=s.docs[args.path];if(!d||d.hash!==args.expectedHash)throw Error('文档已变化，请先重新阅读');const marks=JSON.parse(localStorage.getItem('test-reading-marks')||'[]').filter((m:any)=>m.path!==args.path||m.folder_id!==args.folderId);if(args.action!=='remove')marks.push({folder_id:args.folderId,path:args.path,hash:d.hash});localStorage.setItem('test-reading-marks',JSON.stringify(marks));return;}
    if(cmd==='list_documents')return Object.values(s.docs).map((d:any)=>{const folder=s.folders.find((f:any)=>d.path.startsWith(f.path+'/'));return folder?{folder_id:folder.id,folder_name:folder.name,absolute_path:d.path,relative_path:d.path.slice(folder.path.length+1),modified_ms:d.modified_ms}:null;}).filter(Boolean);
    if(cmd==='read_document'){if(!s.docs[args.path])throw Error('missing document');return {...s.docs[args.path]};}
    if(cmd==='save_document'){const d=s.docs[args.path];if(!d||d.hash!==args.expectedHash)throw Error('文件已被外部修改');d.content=args.content;d.hash+='x';d.modified_ms=Date.now();return {...d};}
@@ -55,4 +57,35 @@ test('refreshes external changes in reading mode and keeps the selected document
  await page.evaluate(()=>{const d=(window as any).shelfTest.docs['/projects/a/README.md'];d.content='# 外部新版本';d.hash='a2';d.modified_ms=Date.now();});
  await expect(page.locator('article h1')).toContainText('外部新版本',{timeout:10000});
  await expect(page.getByRole('navigation',{name:'文档列表'}).getByRole('button').first()).toContainText('README');
+});
+
+test('manual required reading persists; opening never selects or confirms; external edits require review',async({page})=>{
+ await boot(page);
+ await page.getByRole('button',{name:'项目必读',exact:true}).click();
+ await expect(page.getByRole('navigation',{name:'文档列表'}).getByRole('button')).toHaveCount(0);
+ await page.getByRole('button',{name:'全部',exact:true}).click();
+ await page.getByRole('navigation',{name:'文档列表'}).getByRole('button').filter({hasText:'设计'}).click();
+ await expect(page.getByRole('button',{name:'设为项目必读'})).toBeVisible();
+ await page.getByRole('button',{name:'设为项目必读'}).click();
+ await page.getByRole('button',{name:'项目必读',exact:true}).click();
+ await expect(page.getByRole('navigation',{name:'文档列表'}).getByRole('button')).toHaveCount(1);
+ await page.reload();await expect(page.getByRole('button',{name:'移出必读'})).toBeVisible();
+ await page.evaluate(()=>{const d=(window as any).shelfTest.docs['/projects/b/设计.md'];d.content='# 更新后需要重新阅读';d.hash='b2';d.modified_ms=Date.now();});
+ await expect(page.locator('article h1')).toContainText('更新后需要重新阅读',{timeout:10000});
+ await expect(page.getByRole('button',{name:'确认更新',exact:true})).toBeVisible();
+ await expect(page.locator('.reading-badge')).toHaveText('待复核');
+ await page.getByRole('navigation',{name:'文档列表'}).getByRole('button').filter({hasText:'README'}).click();
+ await page.getByRole('navigation',{name:'文档列表'}).getByRole('button').filter({hasText:'设计'}).click();
+ await expect(page.getByRole('button',{name:'确认更新',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'确认更新',exact:true}).click();
+ await expect(page.locator('.reading-badge')).toHaveText('必读');
+ await page.getByRole('button',{name:'编辑',exact:true}).click();
+ await expect(page.getByRole('button',{name:'确认更新',exact:true})).toHaveCount(0);
+ await page.getByLabel('Markdown 编辑器').fill('# 自己修改也需要复核');
+ await page.getByRole('button',{name:'保存',exact:true}).click();
+ await expect(page.getByRole('button',{name:'确认更新',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'移出必读'}).click();
+ await page.getByRole('button',{name:'项目必读',exact:true}).click();
+ await expect(page.getByRole('navigation',{name:'文档列表'}).getByRole('button')).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).shelfTest.docs['/projects/b/设计.md'].content)).toBe('# 自己修改也需要复核');
 });

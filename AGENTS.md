@@ -18,3 +18,10 @@ Tests: pnpm test; pnpm build; cargo test --manifest-path src-tauri/Cargo.toml;
 production Tauri build and actual native reading/editing/create/external-change
 verification on isolated fixtures. Do not edit users' real documents to test.
 Update README and verification notes to match actual observed results.
+
+Required reading is an explicit human choice scoped by registered project root
+and canonical document path. Store the confirmed content hash separately in
+application data, never in the source Markdown or project repository. Reading,
+watcher refresh and saving edits must not auto-confirm. Changed content remains
+required but needs review; stale confirmations must fail. Keep marks and drafts
+when removing a project, and never publish local project settings or reading data.

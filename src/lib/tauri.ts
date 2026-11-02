@@ -37,9 +37,13 @@ export interface SearchResult extends IndexedFile {
   score: number;
 }
 
+export interface ReadingMark { folder_id:string; path:string; state:"confirmed"|"needsReview"|"unavailable" }
+
 export interface DocumentSnapshot { path: string; content: string; hash: string; }
 
 export const tauri = {
+  listReadingMarks: () => invoke<ReadingMark[]>("list_reading_marks"),
+  updateReadingMark: (folderId:string,path:string,expectedHash:string,action:'set'|'confirm'|'remove') => invoke<void>("update_reading_mark",{folderId,path,expectedHash,action}),
   readImage: (path: string) => invoke<string>("read_image", { path }),
   listDocuments: () => invoke<IndexedFile[]>("list_documents"),
   readDocument: (path: string) => invoke<DocumentSnapshot>("read_document", { path }),

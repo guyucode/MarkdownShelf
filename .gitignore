@@ -43,3 +43,7 @@ PLAN.md
 # Local QA artifacts
 test-results/
 playwright-report/
+
+# Local application state must never enter the public source repository.
+/settings.json
+/required-reading.json

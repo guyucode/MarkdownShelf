@@ -4,6 +4,19 @@
 
 打开多个项目，集中看最近更新的 Markdown。左侧只有文档列表，右侧阅读正文或编辑；不移动原文件，不需要账号、模型或云服务。
 
+当前版本 **0.2.0 · Mac 本地预览**。这里提供源码和开发步骤，尚未发布可直接下载的安装包。
+
+## 项目必读
+
+自动收集的文档仍全部保留；“最近修改”只表示磁盘更新时间，不等于内容当前有效。
+
+1. 打开文档阅读，在正文上方点击 **设为项目必读**。每个项目可指定多篇。
+2. 左侧切换 **全部 / 项目必读**，继续使用项目筛选和文件名/路径搜索。
+3. 必读文档内容变化后标记为 **待复核**。重新阅读当前版本，再点 **确认更新**；打开文档或保存自己的编辑不会自动确认。
+4. **移出必读**只移除标记，不删除、不移动、不改写 Markdown 文件。
+
+标记以项目路径、文档路径和人工确认时的 SHA-256 保存在本机应用数据目录 `markdown-shelf/required-reading.json`，与原文、草稿和排序分开。按内容摘要比较，不凭修改时间认定有效。重启保留标记；移除项目后保留记录，重新添加相同路径可恢复；项目或文档改名不自动迁移。文件丢失或无法读取时不自动清除历史标记。此清单是你的阅读选择，不是软件认证的正确版本，也不会上传到 GitHub。
+
 ## 使用
 
 - 点击左上角“添加项目”，选择项目文件夹。重启后保留这些项目。
@@ -38,6 +51,6 @@ pnpm tauri build --bundles app
 
 ## 原项目与许可
 
-保留原 [Apache-2.0 LICENSE](LICENSE)。来源、固定版本及修改说明见 [NOTICE](NOTICE)。原项目说明保留在 [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md)。未复制 mdviewer 源码；第三方依赖继续遵守各自许可。此版本仅用于本机验证，没有发布或配置 GitHub 远程仓库。
+保留原 [Apache-2.0 LICENSE](LICENSE)。来源、固定版本及修改说明见 [NOTICE](NOTICE)。原项目说明保留在 [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md)。未复制 mdviewer 源码；第三方依赖继续遵守各自许可。源码仓库：[guyucode/MarkdownShelf](https://github.com/guyucode/MarkdownShelf)。保留上游历史与许可；用户项目、必读标记和草稿不提交仓库。上游自动发布脚本归档在 `docs/upstream/marky-release.yml`，未启用它向 Marky 或 Homebrew 发布。
 
 本机测试及原生验收范围见 [docs/VALIDATION.md](docs/VALIDATION.md)。

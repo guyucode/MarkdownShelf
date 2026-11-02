@@ -6,3 +6,9 @@ Modified 2026-10-31: independent app identity, two-column document shelf,
 recently modified ordering, project-scoped creation/editing, draft recovery,
 external-change protection, watcher filtering, and tests.
 No mdviewer source code was copied.
+
+Modified 2026-11-03: explicit project required-reading selection, persisted
+content-hash confirmation, update/review indicators, two-column filtering,
+and boundary, persistence and interaction regression tests.
+Upstream release automation is retained under docs/upstream and is not active
+in this independent repository.
