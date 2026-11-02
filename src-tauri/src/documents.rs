@@ -258,14 +258,14 @@ mod tests {
     }
     #[test]
     fn rejects_outside_project_and_symlink_escape() {
-        let (dir, r, _) = setup();
+        let (_dir, r, _) = setup();
         let outside = tempfile::tempdir().unwrap();
         let path = outside.path().join("secret.md");
         std::fs::write(&path, "private").unwrap();
         assert!(read(&r, &path).is_err());
         #[cfg(unix)]
         {
-            let link = dir.path().join("link.md");
+            let link = _dir.path().join("link.md");
             std::os::unix::fs::symlink(&path, &link).unwrap();
             assert!(read(&r, &link).is_err());
         }

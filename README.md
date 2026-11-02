@@ -55,7 +55,11 @@ pnpm build
 cargo test --manifest-path src-tauri/Cargo.toml --locked
 pnpm test:ui
 pnpm tauri dev
+# 发布安装包前先生成目标平台的依赖声明（需要 Python 3）
+python3 scripts/collect-release-licenses.py --target aarch64-apple-darwin
 pnpm tauri build --bundles app
+# Windows 发布构建：先用 x86_64-pc-windows-msvc 目标收集声明，
+# 再 pnpm tauri build --bundles nsis --config src-tauri/tauri.windows.conf.json
 ```
 
 本机开发端口 1430，与 CodeTrail 分开。项目设置保存在系统应用数据目录 `markdown-shelf/settings.json`，草稿保存在该应用的本机 WebView 存储。原文件仍在各项目内。
